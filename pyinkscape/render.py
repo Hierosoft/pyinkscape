@@ -82,4 +82,3 @@ def merge_pdf(output_path, input_paths, **kwargs):
     else:
         # use pdfunite command to merge PDF files
         subprocess.run(["pdfunite"] + input_paths + [output_path])
-

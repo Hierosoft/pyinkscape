@@ -227,7 +227,7 @@ class Dimension:
 
 class BBox():
     ''' A bounding box represents by a top-left anchor (x1, y1) and a dimension (width, height) '''
-    
+
     def __init__(self, x, y, width, height):
         self.__anchor = Point(x, y)
         self.__dimension = Dimension(width, height)
@@ -270,7 +270,7 @@ class BBox():
 class Group:
 
     ''' Represents either a group (composite object) or a layer (special group) '''
-    
+
     def __init__(self, elem, parent_elem):
         self.elem = elem
         self.parent_elem = parent_elem
@@ -300,7 +300,7 @@ class Group:
 
     def line(self, from_point, to_point, style: Style=DEFAULT_LINESTYLE, id_prefix='__pyinkscape_line', **kwargs):
         ''' Draw a new line between two points using a style
-    
+
         :param style: A `Style` object
         :type style: pyinkscape.inkscape.Style
         '''
@@ -341,7 +341,7 @@ class Group:
         txt.set('fill', fill)
         txt.set('text-anchor', text_anchor)
         if style:
-            txt.set('style', str(style))        
+            txt.set('style', str(style))
         for k, v in kwargs.items():
             txt.set(k, str(v))
         txt.text = text
@@ -372,7 +372,7 @@ class Canvas:
     ''' This class represents an Inkscape drawing page (i.e. a SVG file) '''
 
     FILEPATH_MEMORY = ':memory:'
-    
+
     def __init__(self, filepath=FILEPATH_MEMORY, *args, **kwargs):
         ''' Create a new blank canvas or read from an existing file.
 
@@ -495,7 +495,7 @@ class Canvas:
 
     def _xpath_query(self, query_string, namespaces=None):
         if _LXML_AVAILABLE:
-            return self.__root.xpath(query_string, namespaces=namespaces) 
+            return self.__root.xpath(query_string, namespaces=namespaces)
         else:
             return self.__tree.findall(query_string, namespaces=namespaces)
 
@@ -539,10 +539,10 @@ class Canvas:
         return self.groups(layer_only=True)
 
     def layer(self, name: str) -> Group:
-        ''' Find the first layer with a name 
+        ''' Find the first layer with a name
 
-        Layer names are not unique. If there are multiple layers with the same name, only the first one will be returned 
-        
+        Layer names are not unique. If there are multiple layers with the same name, only the first one will be returned
+
         :param name: Name of the layer to search (Note: Layer names a not unique)
         :returns: A `Group` object if found, or None
         :rtype: pyinkscape.inkscape.Group

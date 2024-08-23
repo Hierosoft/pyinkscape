@@ -54,7 +54,7 @@ t2 = Canvas('templates/canvas.svg')  # or use Template() to create an empty canv
 # find a group by name
 g2 = t2.group('Layer 1')  # Search by layer name, can also try: .group_by_id('layerManual')
 
-# 2. Drawing 
+# 2. Drawing
 # Create a pie chart object
 pie = PieChart(g2, center=(200, 200), radius=(150, 150))
 pie.slide(23, 2, 12, 43, 9, 11)
