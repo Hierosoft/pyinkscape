@@ -21,7 +21,7 @@ else:
 try:
     from PyPDF2 import PdfFileMerger
     PYPDF2_ENABLED = True
-except Exception as e:
+except ImportError:
     PYPDF2_ENABLED = False
 
 logger = logging.getLogger(__name__)
