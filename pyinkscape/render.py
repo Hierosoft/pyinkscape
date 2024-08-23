@@ -24,19 +24,15 @@ try:
 except Exception as e:
     PYPDF2_ENABLED = False
 
-
-def getLogger():
-    return logging.getLogger(__name__)
-
+logger = logging.getLogger(__name__)
 
 def _verify_pypdf():
     ''' Verify that it is possible to merge PDF files with current setup (PyPDF2, pdfunite, etc.) '''
     if not PYPDF2_ENABLED:
         if platform.system() == "Windows":
-            logging.getLogger(__name__).error("pyInkscape requires PyPDF2 when running on Windows")
-            raise e
+            raise RuntimeError("pyInkscape requires PyPDF2 when running on Windows")
         else:
-            logging.getLogger(__name__).warning("PyPDF2 is not available. PDF files will be merged using `pdfunite`")
+            logger.warning("PyPDF2 is not available. PDF files will be merged using `pdfunite`")
             # TODO: Verify that pdfunite is available at runtime
             return False
     else:
@@ -54,16 +50,16 @@ def svg_to_pdf(filename, overwrite=False, inkscape_path=INKSCAPE_PATH):
     ''' Convert an SVG file into PDF using Inkscape '''
     _inkscape_path_obj = Path(inkscape_path)
     if not _inkscape_path_obj.is_file():
-        getLogger().error(f"Inkscape binary is not available at {inkscape_path}")
+        logger.error(f"Inkscape binary is not available at {inkscape_path}")
     svg_file = Path(filename)
     output_dir = svg_file.parent
     pdf_file = output_dir / (svg_file.stem + ".pdf")
     if not overwrite and pdf_file.exists():
-        getLogger().warning(f"WARNING: File {pdf_file} exists. SKIPPED")
+        logger.warning(f"WARNING: File {pdf_file} exists. SKIPPED")
     else:
         output = subprocess.run([inkscape_path, f"{svg_file}", f"--export-filename={pdf_file}", "--export-area-drawing"])
         if output.returncode != 0:
-            getLogger().warning(f"Abnomal Inkscape exit code: {output.returncode}")
+            logger.warning(f"Abnomal Inkscape exit code: {output.returncode}")
 
 
 def merge_pdf(output_path, input_paths, **kwargs):
