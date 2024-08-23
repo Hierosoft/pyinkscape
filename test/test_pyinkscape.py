@@ -26,9 +26,7 @@ TEST_CANVAS = TEST_DIR / 'data/canvas-0.92.4.svg'
 TEST_GRAPHIC = TEST_DIR / 'data/graphic.svg'
 
 
-def getLogger():
-    return logging.getLogger(__name__)
-
+logger = logging.getLogger(__name__)
 # ------------------------------------------------------------------------------
 # Test cases
 # ------------------------------------------------------------------------------

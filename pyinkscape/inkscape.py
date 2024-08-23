@@ -86,10 +86,7 @@ except Exception:
 # Configuration
 # ------------------------------------------------------------------------------
 
-
-def getLogger():
-    return logging.getLogger(__name__)
-
+logger = logging.getLogger(__name__)
 
 class Style:
     def __init__(self, **kwargs):
@@ -183,7 +180,7 @@ class Point:
     @staticmethod
     def rotate_percent(point, center, percent):
         degrees = percent * 3.6
-        getLogger().debug(f"Percent: {percent} - Degrees: {degrees}")
+        logger.debug(f"Percent: {percent} - Degrees: {degrees}")
         return Point.rotate(point, center, degrees)
 
     @staticmethod
@@ -206,10 +203,10 @@ class Point:
         t_rad = math.radians(theta)
         n_x = point.x - center.x  # shift center point to (0, 0)
         n_y = point.y - center.y
-        getLogger().debug(f"shifted = ({n_x}, {n_y}) - theta (in radians) = {t_rad}")
+        logger.debug(f"shifted = ({n_x}, {n_y}) - theta (in radians) = {t_rad}")
         r_x = n_x * math.cos(t_rad) - n_y * math.sin(t_rad)  # rotation matrix
         r_y = n_x * math.sin(t_rad) + n_y * math.cos(t_rad)
-        getLogger().debug(f"new point = ({r_x + center.x}, {r_y + center.y})")
+        logger.debug(f"new point = ({r_x + center.x}, {r_y + center.y})")
         return Point(r_x + center.x, r_y + center.y)  # shift it back
 
 
@@ -562,12 +559,12 @@ class Canvas:
 
     def render(self, outpath, overwrite=False, encoding="utf-8"):
         if not overwrite and os.path.isfile(outpath):
-            getLogger().warning(f"File {outpath} exists. SKIPPED")
+            logger.warning(f"File {outpath} exists. SKIPPED")
         else:
             output = str(self)
             with open(outpath, mode='w', encoding=encoding) as outfile:
                 outfile.write(output)
-                getLogger().info("Written output to {}".format(outfile.name))
+                logger.info("Written output to {}".format(outfile.name))
 
     def getText(self, id):
         elems = self._xpath_query("/ns:svg/ns:g/ns:flowRoot[@id='{id}']/ns:flowPara".format(id=id), namespaces=SVG_NAMESPACES)
@@ -576,5 +573,5 @@ class Canvas:
         else:
             # try get <text> element instead of flowRoot ...
             elems = self._xpath_query("/ns:svg/ns:g/ns:text[@id='{id}']/ns:tspan".format(id=id), namespaces=SVG_NAMESPACES)
-            getLogger().debug(f"Found: {elems}")
+            logger.debug(f"Found: {elems}")
             return elems
