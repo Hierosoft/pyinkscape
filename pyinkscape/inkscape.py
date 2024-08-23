@@ -382,6 +382,11 @@ class Canvas:
         :param filepath: Path to an existing SVG file.
         :type filepath: str
         '''
+        if not filepath:
+            warnings.warn(
+                "filepath was explicitly set to {} instead of the default"
+                .format(filepath))
+
         self.__filepath = filepath
         self.__tree = None
         self.__root = None
@@ -391,6 +396,13 @@ class Canvas:
         self.__viewbox = None
         self.__scale = 1.0
         self.__elem_group_map = dict()
+        if len(args) > 0:
+            # warn so the args don't get lost silently!
+            warnings.warn(
+                "Extra arguments detected: {}."
+                " Maybe you meant filepath=\"{}\""
+                .format(args, args[0])
+            )
         if filepath is not None:
             self.__load_file(*args, **kwargs)
 
