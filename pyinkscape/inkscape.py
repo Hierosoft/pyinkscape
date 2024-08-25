@@ -88,6 +88,57 @@ except Exception:
 
 logger = logging.getLogger(__name__)
 
+def el_repr(el):
+    """Convert an element or list of them to str neatly for messages"""
+    if isinstance(el, list):
+        new_list = []
+        for sub in el:
+            new_list.append(el_repr(sub))
+        return str(new_list)
+    tag = el.tag
+    if tag:
+        tag = tag.replace("{" + SVG_NS + "}", "")
+    text = el.text
+    if text is None:
+        text = ""
+    return "<%s ...>%s</%s>" % (tag, text, tag)
+
+
+def used_elements(elements):
+    """Get elements with text (unless only spacing).
+    This is useful for when Inkscape generates multiple
+    text fields and only one is actually used though
+    others are non-blank. In that case, all should
+    be cleared and the first should be set to the
+    desired value (others may have transforms etc).
+    """
+    if not isinstance(elements, list):
+        raise ValueError(
+            "Expected list[Element], got {}({})"
+            .format(type(elements), elements))
+    if len(elements) == 1:
+        # return self.getLeaf(tag, elements[0])
+        return elements
+    matches = []
+    for element in elements:
+        has_value = \
+            not (isinstance(element.text, str) or (element.text is None))
+        # ^ can be int
+        if has_value or (element.text and element.text.strip()):
+            logger.warning("* used {}".format(repr(element.text)))
+            # used = element  # NOTE: not truthy
+            matches.append(element)
+            break
+        logger.warning("* skipping {}".format(repr(element.text)))
+    if len(matches) == 0:
+        logger.warning("All blank, returning first of {}"
+                       .format(elements))
+        return elements[:1]
+    elif len(matches) > 1:
+        logger.warning("multiple non-blank: {}".format(matches))
+    return matches
+
+
 class Style:
     def __init__(self, **kwargs):
         self.attributes = {}
@@ -506,6 +557,9 @@ class Canvas:
         if _LXML_AVAILABLE:
             return self.__root.xpath(query_string, namespaces=namespaces)
         else:
+            logger.info(
+                "[_xpath_query] xml query_string={}"
+                .format(repr(query_string)))
             return self.__tree.findall(query_string, namespaces=namespaces)
 
     def groups(self, layer_only=False):
@@ -572,18 +626,124 @@ class Canvas:
     def render(self, outpath, overwrite=False, encoding="utf-8"):
         if not overwrite and os.path.isfile(outpath):
             logger.warning(f"File {outpath} exists. SKIPPED")
-        else:
-            output = str(self)
-            with open(outpath, mode='w', encoding=encoding) as outfile:
-                outfile.write(output)
-                logger.info("Written output to {}".format(outfile.name))
+            return False
+        output = str(self)
+        with open(outpath, mode='w', encoding=encoding) as outfile:
+            outfile.write(output)
+            logger.info("Written output to {}".format(outfile.name))
+            return True
+
+    def getElementById(self, tag, id):
+        elems = self._xpath_query("/ns:svg/ns:g/ns:{tag}[@id='{id}']/ns:tspan".format(tag=tag, id=id), namespaces=SVG_NAMESPACES)
+        if elems:
+            return elems[0]
+        return None
+
+    def getLeaf(self, tag, el):
+        """Get a specific tag from inside the element.
+        Useful to get tags such as text from automatically-created groups
+        where the user intended to set the id of the text but set the
+        id of the group (in that case, getLeavesById calls this).
+        """
+
+        if el.tag == tag:
+            return el
+        if len(el) > 1:
+            raise ValueError(
+                "Need a parent but got list: {}"
+                .format(el))
+        # if len(el.getchildren()) > 1:
+        leaves = []
+        for child in el.getchildren():
+            if child.tag == tag:
+                leaves.append(tag)
+            elif child.getchildren():
+                for gc in child:
+                    ggc = self.getLeaf(tag, gc)
+                    if ggc:
+                        leaves.append(ggc)
+        if not leaves:
+            return None
+        if len(leaves) == 1:
+            return leaves[0]
+        used = used_elements(leaves)
+        if len(used) == 1:
+            return used[0]
+        logger.warning(
+            "More than one leaf has a placeholder."
+            " Returning first of {}"
+            .format(el_repr(used))
+        )
+        return used[0]
+
+    def getLeavesById(self, id, tag, leaf_tag, only_placeholders=True):
+        """Get leaves such as tspan by id of ancestor.
+        This is useful when Inkscape generates
+        multiple groups and/or multiple text tags
+        when only a text field is apparent to the user.
+
+        If you are trying to fill the field and more than one is
+        returned, set text of all to "" except the first,
+        or artifacts will likely occur (weird upside-down copies etc.
+        Who knows why).
+
+        Args:
+            id (str): id of container or group of container.
+            tag (str): container tag such as text
+            leaf_tag (str): leaf tag such as tspan
+            only_placeholders (bool, optional): only return elements
+                that contain text.
+                - FIXME: This needs to be False to gather all tspan
+                  elements from Inkscape-generated nested groups that
+                  for some reason contain multiple text tags
+                  representing one and therefore need to be cleared
+                  other than the first element where element.text has
+                  content.
+
+        Returns:
+            list[Element]: An element list of all matching fields.
+                If setting text, clear text on all except the first
+                element.
+        """
+        query_str = (".//svg:{}[@id='{}']/svg:{}"
+                     .format(tag, id, leaf_tag)
+        )
+        elements = self._xpath_query(query_str, namespaces=SVG_NAMESPACES)
+        # NOTE: Inkscape usually puts many junk empty tspan tags in
+        #   each text tag, but get all of them and if one is non-empty
+        #   choose that one since that is probably the formatted one
+        #   (user should put "_" or something in there to identify
+        #   the correct one if attempting to use a form filler
+        #   that uses this code).
+        if elements:
+            # return [best_field_element(elements, id=id,
+            #                            tag=tag, leaf_tag=leaf_tag)]
+            if only_placeholders:
+                return used_elements(elements)
+            else:
+                return elements
+        logger.warning(
+            "Got no <{} id=\"{}\">. Trying group"
+            " (potential Inkscape-generated g tag(s) tree)"
+            .format(tag, id))
+        query_str = (".//svg:g[@id='{}']//svg:{}"
+                     .format(id, leaf_tag)
+        )
+        logger.warning("trying {}".format(repr(query_str)))
+        elements = self._xpath_query(query_str, namespaces=SVG_NAMESPACES)
+        if elements:
+            if only_placeholders:
+                return used_elements(elements)
+            else:
+                return elements
+        logger.warning("Got no <g id=\"{}\"> either".format(id))
+        return None
 
     def getText(self, id):
         elems = self._xpath_query("/ns:svg/ns:g/ns:flowRoot[@id='{id}']/ns:flowPara".format(id=id), namespaces=SVG_NAMESPACES)
         if elems:
             return elems
-        else:
-            # try get <text> element instead of flowRoot ...
-            elems = self._xpath_query("/ns:svg/ns:g/ns:text[@id='{id}']/ns:tspan".format(id=id), namespaces=SVG_NAMESPACES)
-            logger.debug(f"Found: {elems}")
-            return elems
+        # try get <text> element instead of flowRoot ...
+        elems = self._xpath_query("/ns:svg/ns:g/ns:text[@id='{id}']/ns:tspan".format(id=id), namespaces=SVG_NAMESPACES)
+        logger.debug(f"Found: {elems}")
+        return elems
