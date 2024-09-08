@@ -40,16 +40,16 @@ try:
     from lxml import etree
     from lxml.etree import XMLParser
     _LXML_AVAILABLE = True
-except Exception as e:
+except ImportError:
     # logging.getLogger(__name__).debug("lxml is not available, fall back to xml.etree.ElementTree")
     from xml.etree import ElementTree as etree
     from xml.etree.ElementTree import XMLParser
     _LXML_AVAILABLE = False
 try:
-    from chirptext.anhxa import IDGenerator
-    from chirptext.cli import setup_logging
+    from chirptext.anhxa import IDGenerator  # type:ignore
+    from chirptext.cli import setup_logging  # type:ignore
     _CHIRPTEXT_AVAILABLE = True
-except Exception as e:
+except ImportError:
     _CHIRPTEXT_AVAILABLE = False
     # When chirptext is not available, fall back to built-in IDGenerator
     # IDGenerator class is adopted from:

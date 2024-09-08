@@ -30,8 +30,9 @@ Latest version can be found at https://github.com/letuananh
 # THE SOFTWARE.
 
 ########################################################################
-
+import os
 import pyinkscape
+
 from pyinkscape import Canvas, PieChart
 from pyinkscape.charts import show_locs
 
@@ -67,4 +68,4 @@ show_locs(pie, g2)
 
 # 3. Generate output SVG file
 # Add overwrite=True to bypass pyInkscape overwrite protection
-t2.render('output/piedemo.svg', overwrite=True)
+t2.render(os.path.join('output', 'piedemo.svg'), overwrite=True)

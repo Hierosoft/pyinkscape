@@ -19,7 +19,7 @@ else:
     INKSCAPE_PATH = "/usr/bin/inkscape"
 
 try:
-    from PyPDF2 import PdfFileMerger
+    from PyPDF2 import PdfFileMerger  # type:ignore
     PYPDF2_ENABLED = True
 except ImportError:
     PYPDF2_ENABLED = False
@@ -39,7 +39,7 @@ def _verify_pypdf():
         return True
 
 
-def prepare_output_dir(output_dir='ouput', mkdir=False):
+def prepare_output_dir(output_dir='output', mkdir=False):
     output_dir = Path(output_dir)
     if mkdir and not output_dir.exists():
         output_dir.mkdir(parents=True)
@@ -59,11 +59,11 @@ def svg_to_pdf(filename, overwrite=False, inkscape_path=INKSCAPE_PATH):
     else:
         output = subprocess.run([inkscape_path, f"{svg_file}", f"--export-filename={pdf_file}", "--export-area-drawing"])
         if output.returncode != 0:
-            logger.warning(f"Abnomal Inkscape exit code: {output.returncode}")
+            logger.warning(f"Abnormal Inkscape exit code: {output.returncode}")
 
 
 def merge_pdf(output_path, input_paths, **kwargs):
-    ''' Merge differnt PDF files into one '''
+    ''' Merge different PDF files into one '''
     if _verify_pypdf():
         merger = PdfFileMerger()
         file_objects = []
