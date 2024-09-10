@@ -73,7 +73,16 @@ except ImportError:
                 return valid_id
 
 
+from pyinkscape.xmlnav import (
+    clean_el_repr,
+    used_element,
+    get_leaf,
+    used_elements,
+    SVG_NS,
+)
+
 _MY_DIR = Path(os.path.dirname(os.path.realpath(__file__)))
+
 _BLANK_CANVAS = _MY_DIR / 'data' / 'blank.svg'
 
 # ------------------------------------------------------------------------------
@@ -88,55 +97,10 @@ except Exception:
 
 logger = logging.getLogger(__name__)
 
+
 def el_repr(el):
-    """Convert an element or list of them to str neatly for messages"""
-    if isinstance(el, list):
-        new_list = []
-        for sub in el:
-            new_list.append(el_repr(sub))
-        return str(new_list)
-    tag = el.tag
-    if tag:
-        tag = tag.replace("{" + SVG_NS + "}", "")
-    text = el.text
-    if text is None:
-        text = ""
-    return "<%s ...>%s</%s>" % (tag, text, tag)
-
-
-def used_elements(elements):
-    """Get elements with text (unless only spacing).
-    This is useful for when Inkscape generates multiple
-    text fields and only one is actually used though
-    others are non-blank. In that case, all should
-    be cleared and the first should be set to the
-    desired value (others may have transforms etc).
-    """
-    if not isinstance(elements, list):
-        raise ValueError(
-            "Expected list[Element], got {}({})"
-            .format(type(elements), elements))
-    if len(elements) == 1:
-        # return self.getLeaf(tag, elements[0])
-        return elements
-    matches = []
-    for element in elements:
-        has_value = \
-            not (isinstance(element.text, str) or (element.text is None))
-        # ^ can be int
-        if has_value or (element.text and element.text.strip()):
-            logger.warning("* used {}".format(repr(element.text)))
-            # used = element  # NOTE: not truthy
-            matches.append(element)
-            break
-        logger.warning("* skipping {}".format(repr(element.text)))
-    if len(matches) == 0:
-        logger.warning("All blank, returning first of {}"
-                       .format(elements))
-        return elements[:1]
-    elif len(matches) > 1:
-        logger.warning("multiple non-blank: {}".format(matches))
-    return matches
+    ''' Convert SVG element to str such as for display in logs '''
+    return clean_el_repr(el, exclude="{" + SVG_NS + "}")
 
 
 class Style:
@@ -159,7 +123,6 @@ class Style:
 
 
 INKSCAPE_NS = 'http://www.inkscape.org/namespaces/inkscape'
-SVG_NS = 'http://www.w3.org/2000/svg'
 SVG_NAMESPACES = {'ns': SVG_NS,
           'svg': SVG_NS,
           'dc': "http://purl.org/dc/elements/1.1/",
@@ -421,7 +384,7 @@ class Canvas:
 
     FILEPATH_MEMORY = ':memory:'
 
-    def __init__(self, filepath=FILEPATH_MEMORY, *args, **kwargs):
+    def __init__(self, filepath: str = FILEPATH_MEMORY, *args, **kwargs):
         ''' Create a new blank canvas or read from an existing file.
 
         To create a blank canvas, just ignore the filepath property.
@@ -431,7 +394,6 @@ class Canvas:
         >>> c = Canvas("/path/to/file.svg")
 
         :param filepath: Path to an existing SVG file.
-        :type filepath: str
         '''
         if not filepath:
             warnings.warn(
@@ -544,7 +506,27 @@ class Canvas:
         warnings.warn("load() is deprecated and will be removed in near future, use Canvas constructor instead.", DeprecationWarning, stacklevel=2)
         return Canvas(filepath=filepath, encoding=encoding, remove_blank_text=remove_blank_text, **kwargs)
 
-    def to_xml_string(self, encoding="utf-8", pretty_print=True, **kwargs):
+    def to_xml_string(self, encoding: str = "utf-8",
+                      pretty_print: bool = False, **kwargs) -> str:
+        ''' Convert the XML tree to a string representation.
+
+        Typically this is accessed via str(self) (Python uses the
+        __str__ dunder method since defined in this class) which is
+        called by render.
+
+        :param encoding: The encoding format to use (defaults to
+            "utf-8").
+        :param pretty_print: Whether to pretty-print the XML. If True,
+            text would get mangled by extra newlines (Issue #3), due to
+            having newlines and indents for the tspan tags which
+            function like HTML span tags in Inkscape! Therefore,
+            generally do not use True (defaults to `False`).
+        :param kwargs: Additional keyword arguments to pass to
+            `etree.tostring`.
+        :return: Inkscape-style XML representing the Canvas (entire
+            Inkscape document).
+        '''
+
         if _LXML_AVAILABLE:
             return etree.tostring(self.__root, encoding=encoding, pretty_print=pretty_print, **kwargs).decode('utf-8')
         else:
@@ -633,78 +615,68 @@ class Canvas:
             logger.info("Written output to {}".format(outfile.name))
             return True
 
-    def getElementById(self, tag, id):
-        elems = self._xpath_query("/ns:svg/ns:g/ns:{tag}[@id='{id}']/ns:tspan".format(tag=tag, id=id), namespaces=SVG_NAMESPACES)
-        if elems:
-            return elems[0]
-        return None
-
-    def getLeaf(self, tag, el):
-        """Get a specific tag from inside the element.
-        Useful to get tags such as text from automatically-created groups
-        where the user intended to set the id of the text but set the
-        id of the group (in that case, getLeavesById calls this).
-        """
-
-        if el.tag == tag:
-            return el
-        if len(el) > 1:
-            raise ValueError(
-                "Need a parent but got list: {}"
-                .format(el))
-        # if len(el.getchildren()) > 1:
-        leaves = []
-        for child in el.getchildren():
-            if child.tag == tag:
-                leaves.append(tag)
-            elif child.getchildren():
-                for gc in child:
-                    ggc = self.getLeaf(tag, gc)
-                    if ggc:
-                        leaves.append(ggc)
-        if not leaves:
+    def getElementByTagAndId(self, tag: str, id: str, skip_empty: bool = False,
+                             assert_id_in: str = None):
+        elems = self._xpath_query("/ns:svg/*/ns:{tag}[@id='{id}']".format(tag=tag, id=id), namespaces=SVG_NAMESPACES)
+        if not elems:
+            if assert_id_in:
+                raise AssertionError("<{} ... id {} ...> was not found in {}"
+                                     .format(tag, id, repr(assert_id_in)))
             return None
-        if len(leaves) == 1:
-            return leaves[0]
-        used = used_elements(leaves)
-        if len(used) == 1:
-            return used[0]
-        logger.warning(
-            "More than one leaf has a placeholder."
-            " Returning first of {}"
-            .format(el_repr(used))
-        )
-        return used[0]
+        if skip_empty:
+            return used_element(elems)
+        return elems[0]
 
-    def getLeavesById(self, id, tag, leaf_tag, only_placeholders=True):
-        """Get leaves such as tspan by id of ancestor.
-        This is useful when Inkscape generates
-        multiple groups and/or multiple text tags
-        when only a text field is apparent to the user.
+    def getElementById(self, id: str, skip_empty: bool = False,
+                       assert_id_in: str = None):
+        elems = self._xpath_query("//*[@id='{id}']".format(id=id), namespaces=SVG_NAMESPACES)
+        if not elems:
+            if assert_id_in:
+                raise AssertionError("id {} was not found in {}"
+                                     .format(id, repr(assert_id_in)))
+            return None
+        if skip_empty:
+            return used_element(elems)
+        return elems[0]
 
-        If you are trying to fill the field and more than one is
-        returned, set text of all to "" except the first,
-        or artifacts will likely occur (weird upside-down copies etc.
-        Who knows why).
+    def getLeafById(self, tag, id, skip_empty: bool = False,
+                    spacing: bool = False,
+                    assert_id_in: str = None):
+        el = self.getElementById(id, skip_empty=skip_empty)
+        # NOTE: even if found, may not be truthy, so always check
+        #   against None
+        if el is None:
+            if assert_id_in:
+                raise AssertionError(
+                    "id {} was not found in {}"
+                    .format(id, repr(assert_id_in)))
+            return None
+        return get_leaf(el, tag, skip_empty=skip_empty, spacing=spacing)
 
-        Args:
-            id (str): id of container or group of container.
-            tag (str): container tag such as text
-            leaf_tag (str): leaf tag such as tspan
-            only_placeholders (bool, optional): only return elements
-                that contain text.
-                - FIXME: This needs to be False to gather all tspan
-                  elements from Inkscape-generated nested groups that
-                  for some reason contain multiple text tags
-                  representing one and therefore need to be cleared
-                  other than the first element where element.text has
-                  content.
+    def getLeavesById(self, id: str, tag: str, leaf_tag: str,
+                      skip_empty: bool = True) -> list:
+        ''' Get leaves such as `tspan` by id of ancestor.
 
-        Returns:
-            list[Element]: An element list of all matching fields.
-                If setting text, clear text on all except the first
-                element.
-        """
+        This method is useful when Inkscape generates multiple groups
+        and/or multiple `text` tags when only a single text field is
+        apparent to the user.
+
+        If you are trying to fill the field and more than one element is
+        returned, set the text of all but the first to an empty string
+        (`""`) to avoid artifacts (e.g., weird upside-down copies,
+        etc.). For more details, see issue #3.
+
+        :param id: The id of the container or the group of containers.
+        :param tag: The container tag, such as `text`.
+        :param leaf_tag: The leaf tag, such as `tspan`.
+        :param skip_empty: Whether to return only elements that
+            contain text. This should be set to `False` to avoid issue
+            #3 (Inkscape creates nested groups and multiple transformed
+            copies for a simple text box). Defaults to `False`.
+        :return: A list of elements matching the specified criteria. If
+            setting text, clear text on all but the first element.
+        :rtype: list[Element]
+        '''
         query_str = (".//svg:{}[@id='{}']/svg:{}"
                      .format(tag, id, leaf_tag)
         )
@@ -718,7 +690,7 @@ class Canvas:
         if elements:
             # return [best_field_element(elements, id=id,
             #                            tag=tag, leaf_tag=leaf_tag)]
-            if only_placeholders:
+            if skip_empty:
                 return used_elements(elements)
             else:
                 return elements
@@ -732,7 +704,7 @@ class Canvas:
         logger.warning("trying {}".format(repr(query_str)))
         elements = self._xpath_query(query_str, namespaces=SVG_NAMESPACES)
         if elements:
-            if only_placeholders:
+            if skip_empty:
                 return used_elements(elements)
             else:
                 return elements
