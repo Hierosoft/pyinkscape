@@ -31,9 +31,10 @@ Latest version can be found at https://github.com/letuananh/pyinkscape
 
 ########################################################################
 
-import os
 import logging
 import math
+import os
+import sys
 import warnings
 
 from pathlib import Path
@@ -72,7 +73,6 @@ except ImportError:
                     if self.__id_check_hook is None or not self.__id_check_hook(valid_id):
                         break
                 return valid_id
-
 
 from pyinkscape.xmlnav import (
     clean_el_repr,
@@ -657,7 +657,8 @@ class Canvas:
         return get_leaf(el, tag, skip_empty=skip_empty, spacing=spacing)
 
     def getLeavesById(self, id: str, tag: str, leaf_tag: str,
-                      skip_empty: bool = True) -> list:
+                      skip_empty: bool = True,
+                      spacing: bool = True) -> list:
         ''' Get leaves such as `tspan` by id of ancestor.
 
         This method is useful when Inkscape generates multiple groups
@@ -667,15 +668,19 @@ class Canvas:
         If you are trying to fill the field and more than one element is
         returned, set the text of all but the first to an empty string
         (`""`) to avoid artifacts (e.g., weird upside-down copies,
-        etc.). For more details, see issue #3.
+        etc.). For more details, see issue #3. The setField method
+        should call this to avoid the issue.
 
         :param id: The id of the container or the group of containers.
-        :param tag: The container tag, such as `text`.
+        :param tag: The container tag, such as `g` or `text`.
         :param leaf_tag: The leaf tag, such as `tspan`.
         :param skip_empty: Whether to return only elements that
             contain text. This should be set to `False` to avoid issue
             #3 (Inkscape creates nested groups and multiple transformed
             copies for a simple text box). Defaults to `False`.
+        :param spacing: Whether elements containing only spacing
+            characters are considered non-empty for skip_empty.
+            Not used if not skip_empty. Defaults to True.
         :return: A list of elements matching the specified criteria. If
             setting text, clear text on all but the first element.
         :rtype: list[Element]
@@ -694,31 +699,103 @@ class Canvas:
             # return [best_field_element(elements, id=id,
             #                            tag=tag, leaf_tag=leaf_tag)]
             if skip_empty:
-                return used_elements(elements)
+                return used_elements(elements, spacing=spacing)
             else:
                 return elements
-        logger.warning(
-            "Got no <{} id=\"{}\">. Trying group"
-            " (potential Inkscape-generated g tag(s) tree)"
-            .format(tag, id))
         query_str = (".//svg:g[@id='{}']//svg:{}"
                      .format(id, leaf_tag)
         )
-        logger.warning("trying {}".format(repr(query_str)))
+        # ^ such as ".//svg:g[@id='armor_class_']//svg:tspan"
+        # logger.warning("trying {}".format(repr(query_str)))
         elements = self._xpath_query(query_str, namespaces=SVG_NAMESPACES)
         if elements:
+            logger.warning(
+                f"Found <g id=\"{id}\"...>:"
+                f" speculated since no <{tag} id=\"{id}\"...>")
             if skip_empty:
-                return used_elements(elements)
+                return used_elements(elements, spacing=spacing)
             else:
                 return elements
-        logger.warning("Got no <g id=\"{}\"> either".format(id))
+        logger.warning(
+            f"Missing <{tag} id=\"{id}\" Also tried <g id=\"{id}\"...>:"
+            f" ...>")
         return None
 
+    def getField(self, id: str):
+        ''' Set an Inkscape text field's content.
+        Any tag (including typical `g` or `text`) are checked for the
+        id, then first deepest tspan's text is returned (See setField
+        for details).
+        '''
+        el = self.getElementById(id)
+        if el is None:
+            return None
+        leaf = get_leaf(el, "tspan", skip_empty=False)
+        if leaf is not None:
+            return leaf.text
+        return None
+
+    def setField(self, id: str, value, skip_empty: bool=False,
+                 spacing: bool=False) -> bool:
+        ''' Set an Inkscape text field's content.
+        Assuming typical SVG `<ANY id="ID"><tspan>VALUE` where ANY is
+        usually `g` or `text` (or both nested), set the tspan's content.
+        Clear content of extra tspan tags to avoid corruption
+        (See skip_empty and issue #3). This doesn't occur with Inkscape
+        1.2 (at least after initially setting id of a text field--text
+        gets the id), but this method should maintain compatibility with
+        older InkScape SVG files.
+
+        :param id: The id of the text field or group containing it (The
+            text tag must contain a tspan or nested tspan in tspan, as
+            is expected in an InkScape SVG).
+        :param value: The value to set (will be converted to str).
+        :param skip_empty: Whether to return only elements that
+            contain text. This should be set to `False` to avoid issue
+            #3 (Inkscape creates nested groups and multiple transformed
+            copies for a simple text box). Defaults to `False`.
+        :param spacing: Whether elements containing only spacing
+            characters are considered non-empty for skip_empty
+            (allows user to create a form where only spacing characters
+            are in the empty form field). If not skip_empty, this has no
+            effect. Defaults to True.
+        :return: Whether any matching field was found and set.
+        '''
+        leaves = self.getLeavesById(id, "text", "tspan", skip_empty=skip_empty,
+                                    spacing=spacing)
+        new_value = str(value)  # Must be str, or can't be serialized! (or
+        #   lxml has "TypeError: Argument must be bytes or unicode, got 'int'"
+        #   and xml has "TypeError: cannot serialize 17 (type int)")
+        if len(leaves) > 0:
+            for leaf in leaves:
+                leaf.text = new_value
+                new_value = ""  # erase remaining extra transformed copies
+                #  that Inkscape may generate (See issue 3)
+            return True
+        el = self.getElementById(id)
+        if el is not None:
+            leaf = get_leaf(el, "tspan", skip_empty=skip_empty,
+                            spacing=spacing)
+            if leaf is not None:
+                leaf.text = new_value
+                return True
+        print(
+            f"Warning: Canvas filepath=\"{self.__filepath}\""
+            f" does not contain id {id}."
+            f" Cannot set {id}='{new_value}' in the file.",
+            file=sys.stderr)
+        return False
+
     def getText(self, id):
-        elems = self._xpath_query("/ns:svg/ns:g/ns:flowRoot[@id='{id}']/ns:flowPara".format(id=id), namespaces=SVG_NAMESPACES)
+        ''' Get flowRoot or text elements with matching id. '''
+        elems = self._xpath_query(
+            "/ns:svg/ns:g/ns:flowRoot[@id='{id}']/ns:flowPara"
+            .format(id=id), namespaces=SVG_NAMESPACES)
         if elems:
             return elems
         # try get <text> element instead of flowRoot ...
-        elems = self._xpath_query("/ns:svg/ns:g/ns:text[@id='{id}']/ns:tspan".format(id=id), namespaces=SVG_NAMESPACES)
+        elems = self._xpath_query(
+            "/ns:svg/ns:g/ns:text[@id='{id}']/ns:tspan"
+            .format(id=id), namespaces=SVG_NAMESPACES)
         logger.debug(f"Found: {elems}")
         return elems
