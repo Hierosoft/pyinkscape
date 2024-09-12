@@ -53,6 +53,7 @@ TEST_GRAPHIC = TEST_DATA_DIR / 'graphic.svg'
 FILLABLE_SHEET = TEST_DATA_DIR / 'fillable_sheet.svg'
 FILLED_SHEET = TEST_DATA_DIR / 'fillable_sheet-FILLED.svg'  # temp file
 MARKED_SHEET = TEST_DATA_DIR / 'id_finding_test-MARKED.svg'
+NON_NESTED_TEXT_SHEET = TEST_DATA_DIR / 'inkscape-1.2-text.svg'  # See issue #3
 # - Ran https://xml-beautify.com on FILLABLE_SHEET
 #   (and manually reordered svg tag properties),
 #   so spacing matches FILLED_SHEET for easier comparison
@@ -162,6 +163,14 @@ class TestSVGReading(unittest.TestCase):
         self.doc_name = os.path.basename(self.doc_path)
         self.assertTrue(os.path.isfile(MARKED_SHEET))
         self.canvas = Canvas(filepath=MARKED_SHEET)
+
+    def test_getText(self):
+        doc_path = NON_NESTED_TEXT_SHEET
+        self.assertTrue(os.path.isfile(doc_path))
+        canvas = Canvas(filepath=doc_path)
+        elements = canvas.getText('sometext')
+        self.assertEqual(len(elements), 1)
+        self.assertEqual(elements[0].text, 'something')
 
     def test_get_leaf(self):
         el = self.canvas.getElementById(

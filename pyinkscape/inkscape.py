@@ -789,13 +789,13 @@ class Canvas:
     def getText(self, id):
         ''' Get flowRoot or text elements with matching id. '''
         elems = self._xpath_query(
-            "/ns:svg/ns:g/ns:flowRoot[@id='{id}']/ns:flowPara"
+            ".//ns:flowRoot[@id='{id}']/ns:flowPara"
             .format(id=id), namespaces=SVG_NAMESPACES)
         if elems:
             return elems
         # try get <text> element instead of flowRoot ...
         elems = self._xpath_query(
-            "/ns:svg/ns:g/ns:text[@id='{id}']/ns:tspan"
+            ".//ns:text[@id='{id}']/ns:tspan"
             .format(id=id), namespaces=SVG_NAMESPACES)
         logger.debug(f"Found: {elems}")
         return elems
