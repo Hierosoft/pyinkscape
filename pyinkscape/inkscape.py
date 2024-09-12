@@ -35,6 +35,7 @@ import os
 import logging
 import math
 import warnings
+
 from pathlib import Path
 try:
     from lxml import etree
@@ -615,21 +616,23 @@ class Canvas:
             logger.info("Written output to {}".format(outfile.name))
             return True
 
-    def getElementByTagAndId(self, tag: str, id: str, skip_empty: bool = False,
+    def getElementsByTagName(self, tag: str, skip_empty: bool = False,
+                             spacing: bool = False,
                              assert_id_in: str = None):
-        elems = self._xpath_query("/ns:svg/*/ns:{tag}[@id='{id}']".format(tag=tag, id=id), namespaces=SVG_NAMESPACES)
+        elems = self._xpath_query(".//ns:{tag}".format(tag=tag),
+                                  namespaces=SVG_NAMESPACES)
         if not elems:
             if assert_id_in:
-                raise AssertionError("<{} ... id {} ...> was not found in {}"
-                                     .format(tag, id, repr(assert_id_in)))
+                raise AssertionError("<{} ... > was not found in {}"
+                                     .format(tag, repr(assert_id_in)))
             return None
         if skip_empty:
-            return used_element(elems)
-        return elems[0]
+            return used_elements(elems, spacing=spacing)
+        return elems
 
     def getElementById(self, id: str, skip_empty: bool = False,
                        assert_id_in: str = None):
-        elems = self._xpath_query("//*[@id='{id}']".format(id=id), namespaces=SVG_NAMESPACES)
+        elems = self._xpath_query(".//*[@id='{id}']".format(id=id), namespaces=SVG_NAMESPACES)
         if not elems:
             if assert_id_in:
                 raise AssertionError("id {} was not found in {}"

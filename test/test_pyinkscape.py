@@ -13,7 +13,12 @@ import logging
 import os
 import sys
 import unittest
+
 # import warnings
+# warnings.filterwarnings("error")  # stop at lxml FutureWarning
+# - commented since also stops at
+#   "filepath was explicitly set to {} instead of the default"
+#   in pyinkscape.inkscape.py
 
 from pathlib import Path
 
@@ -149,13 +154,19 @@ class TestSVGAddElements(unittest.TestCase):
 
 
 class TestSVGReading(unittest.TestCase):
+    def setUp(self):
+        self.load_canvas(MARKED_SHEET)
+
+    def load_canvas(self, doc_path):
+        self.doc_path = doc_path
+        self.doc_name = os.path.basename(self.doc_path)
+        self.assertTrue(os.path.isfile(MARKED_SHEET))
+        self.canvas = Canvas(filepath=MARKED_SHEET)
+
     def test_get_leaf(self):
-        doc_path = MARKED_SHEET
-        doc_name = os.path.basename(doc_path)
-        self.assertTrue(os.path.isfile(doc_path))
-        canvas = Canvas(filepath=doc_path)
-        el = canvas.getElementById("armor_class_", skip_empty=False,
-                                   assert_id_in=doc_name)
+        el = self.canvas.getElementById(
+            "armor_class_", skip_empty=False,
+            assert_id_in=self.doc_name)
         self.assertIsNotNone(el)
         self.assertNotIsInstance(el, list)
 
@@ -174,11 +185,9 @@ class TestSVGReading(unittest.TestCase):
                          .format(el_repr(leaf)))
 
     def test_getLeafById(self):
-        self.assertTrue(os.path.isfile(MARKED_SHEET))
-        canvas = Canvas(filepath=MARKED_SHEET)
-
-        leaf = canvas.getLeafById("tspan", "armor_class_", skip_empty=False,
-                                  assert_id_in=MARKED_SHEET)
+        leaf = self.canvas.getLeafById(
+            "tspan", "armor_class_", skip_empty=False,
+            assert_id_in=self.doc_name)
         self.assertIsNotNone(leaf)
         self.assertNotIsInstance(leaf, list)
         self.assertIn(leaf.text, {None, ""})
@@ -189,11 +198,9 @@ class TestSVGReading(unittest.TestCase):
         #   complete test.
 
     def test_getLeafById_placeholder(self):
-        self.assertTrue(os.path.isfile(MARKED_SHEET))
-        canvas = Canvas(filepath=MARKED_SHEET)
         _id = "armor_class_"
-        leaf = canvas.getLeafById("tspan", _id, skip_empty=True,
-                                  assert_id_in=MARKED_SHEET)
+        leaf = self.canvas.getLeafById("tspan", _id, skip_empty=True,
+                                       assert_id_in=self.doc_name)
         self.assertIsNotNone(leaf)
         self.assertNotIsInstance(leaf, list)
         self.assertEqual(leaf.text, "B",
@@ -201,15 +208,21 @@ class TestSVGReading(unittest.TestCase):
                          .format(leaf.tag, _id, leaf.text))
 
     def test_getElementById(self):
-        doc_path = MARKED_SHEET
-        doc_name = os.path.basename(doc_path)
-        self.assertTrue(os.path.isfile(doc_path))
-        canvas = Canvas(filepath=doc_path)
-        el = canvas.getElementById("armor_class_", skip_empty=False,
-                                   assert_id_in=doc_name)
+        el = self.canvas.getElementById("armor_class_", skip_empty=False,
+                                        assert_id_in=self.doc_name)
         self.assertIsNotNone(el)
         self.assertNotIsInstance(el, list)
 
+    def test_getElementsByTagName(self):
+        els = self.canvas.getElementsByTagName("g", skip_empty=True,
+                                               assert_id_in=self.doc_name)
+        self.assertGreaterEqual(len(els), 1)
+        for el in els:
+            if el.get('id') == "armor_class_":
+                leaf = get_leaf(el, "tspan", skip_empty=True)
+                self.assertEqual(leaf.text, "B")
+                return
+        raise AssertionError("<g id=\"armor_class_\" ...> was not found.")
 
 
 class TestSVGEditing(unittest.TestCase):
@@ -264,6 +277,9 @@ if __name__ == "__main__":
     # For quickly getting a traceback for the first test that fails:
     test = TestSVGReading()
     test.setUp()
+    count = 0
     for sub in dir(test):
         if sub.startswith("test"):
             getattr(test, sub)()
+            count += 1
+    print("All {} test(s) passed.".format(count))

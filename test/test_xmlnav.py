@@ -258,3 +258,5 @@ if __name__ == "__main__":
     # for sub in dir(test):
     #     if sub.startswith("test"):
     #         getattr(test, sub)()
+    #         count += 1
+    # print("All {} test(s) passed.".format(count))
