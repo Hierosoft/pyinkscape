@@ -1,0 +1,17 @@
+<root>
+    <item>
+        <subitem id="a">
+            <leaf id="l1"></leaf>
+        </subitem>
+    </item>
+    <item>
+        <subitem id="b">
+            <leaf id="l2"> </leaf>
+        </subitem>
+    </item>
+    <item>
+        <subitem id="c">
+            <leaf id="l3">s</leaf>
+        </subitem>
+    </item>
+</root>

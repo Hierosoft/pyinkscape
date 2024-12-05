@@ -30,8 +30,9 @@ Latest version can be found at https://github.com/letuananh
 # THE SOFTWARE.
 
 ########################################################################
-
+import os
 import pyinkscape
+
 from pyinkscape import Canvas, PieChart
 from pyinkscape.charts import show_locs
 
@@ -54,7 +55,7 @@ t2 = Canvas('templates/canvas.svg')  # or use Template() to create an empty canv
 # find a group by name
 g2 = t2.group('Layer 1')  # Search by layer name, can also try: .group_by_id('layerManual')
 
-# 2. Drawing 
+# 2. Drawing
 # Create a pie chart object
 pie = PieChart(g2, center=(200, 200), radius=(150, 150))
 pie.slide(23, 2, 12, 43, 9, 11)
@@ -67,4 +68,4 @@ show_locs(pie, g2)
 
 # 3. Generate output SVG file
 # Add overwrite=True to bypass pyInkscape overwrite protection
-t2.render('output/piedemo.svg', overwrite=True)
+t2.render(os.path.join('output', 'piedemo.svg'), overwrite=True)

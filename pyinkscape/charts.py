@@ -120,4 +120,3 @@ def show_locs(pie, group, radius=3):
         group.circle(slide.target, radius, style=green)
     # draw the center point
     group.circle(pie.center, radius, style=STYLE_REDDOT)
-
