@@ -38,6 +38,7 @@ import sys
 import warnings
 
 from pathlib import Path
+from typing import List
 try:
     from lxml import etree
     from lxml.etree import XMLParser
@@ -98,10 +99,25 @@ except Exception:
 
 logger = logging.getLogger(__name__)
 
+if _LXML_AVAILABLE:
+    print("Using lxml")
+else:
+    print("Using Python's builtin xml")
+
 
 def el_repr(el):
     ''' Convert SVG element to str such as for display in logs '''
     return clean_el_repr(el, exclude="{" + SVG_NS + "}")
+
+
+def el_repr_raw(el):
+    ''' Convert SVG element to str such as for display in logs '''
+    return clean_el_repr(el, exclude=None)
+
+
+def els_repr_raw(els):
+
+    return [el_repr_raw(el) for el in els]
 
 
 class Style:
@@ -616,6 +632,12 @@ class Canvas:
             logger.info("Written output to {}".format(outfile.name))
             return True
 
+    def getAllIds(self):
+        ''' Return a list of all 'id' attributes in the SVG tree. '''
+        if self.__root is None:
+            return []
+        return [element.get('id') for element in self.__root.iter() if element.get('id')]
+
     def getElementsByTagName(self, tag: str, skip_empty: bool = False,
                              spacing: bool = False,
                              assert_id_in: str = None):
@@ -630,17 +652,62 @@ class Canvas:
             return used_elements(elems, spacing=spacing)
         return elems
 
-    def getElementById(self, id: str, skip_empty: bool = False,
-                       assert_id_in: str = None):
-        elems = self._xpath_query(".//*[@id='{id}']".format(id=id), namespaces=SVG_NAMESPACES)
-        if not elems:
+    def getElementById(
+        self,
+        id: str,
+        skip_empty: bool = False,
+        assert_id_in: str = None,  # assert_id_in: str | None = None,
+    ):
+        """Return the first element with the given @id.
+
+        Works reliably with both lxml and xml.etree.ElementTree.
+        Uses cached lookup when possible, XPath when lxml is available.
+
+        Args:
+            id: The @id to search for.
+            skip_empty: If True, return result of used_element(elems).
+            assert_id_in: Raise AssertionError with context if not found.
+
+        Returns:
+            Element with matching @id, or None.
+
+        Raises:
+            AssertionError: If assert_id_in given and element not found.
+        """
+        # Fast path: use lxml XPath if available (best performance on large files)
+        if _LXML_AVAILABLE:
+            try:
+                elems = self._xpath_query(".//*[@id=$id]", {"id": id})
+                if elems:
+                    result = elems[0]
+                    if skip_empty:
+                        return used_element(elems)
+                    return result
+            except Exception:
+                # Fallback to cache method on any XPath error (shouldn't happen, but safe)
+                pass
+
+        # Slow path or lxml failed use cached iteration (pure ElementTree compatible)
+        if not hasattr(self, "_id_to_elements"):
+            self._id_to_elements = {}
+            for elem in self.__tree.iter():
+                elem_id = elem.get("id")
+                if elem_id is not None:
+                    self._id_to_elements.setdefault(elem_id, []).append(elem)
+
+        elements = self._id_to_elements.get(id)
+
+        if not elements:
             if assert_id_in:
-                raise AssertionError("id {} was not found in {}"
-                                     .format(id, repr(assert_id_in)))
+                raise AssertionError(f"id {id!r} was not found in {assert_id_in}")
             return None
+
+        result = elements[0]
+
         if skip_empty:
-            return used_element(elems)
-        return elems[0]
+            return used_element(elements)
+
+        return result
 
     def getLeafById(self, tag, id, skip_empty: bool = False,
                     spacing: bool = False,
@@ -655,6 +722,82 @@ class Canvas:
                     .format(id, repr(assert_id_in)))
             return None
         return get_leaf(el, tag, skip_empty=skip_empty, spacing=spacing)
+
+    def _getLeavesById_xml(
+        self,
+        id: str,
+        leaf_tag: str = "tspan",
+        skip_empty: bool = True,
+        spacing: bool = True,
+    ) -> list:  # -> list | None:
+        """Return all terminal leaf nodes (usually tspan) under element with given @id.
+
+        Robust against:
+          • Namespaces (e.g. {http://www.w3.org/2000/svg}tspan)
+          • Any container tag (<text>, <g>, etc.)
+          • Any nesting depth
+          • Multiple sibling leaves
+
+        Args:
+            id: The @id to search under.
+            leaf_tag: Local name of leaf tag (default: "tspan").
+            skip_empty: Discard leaves with only whitespace.
+            spacing: Use .strip() when checking emptiness.
+
+        Returns:
+            List of terminal leaf elements that actually hold text, or None.
+        """
+        # Build id cache once
+        if not hasattr(self, "_id_to_elements"):
+            self._id_to_elements = {}
+            for el in self.__tree.iter():
+                eid = el.get("id")
+                if eid is not None:
+                    if eid not in self._id_to_elements:
+                        self._id_to_elements[eid] = []
+                    self._id_to_elements[eid].append(el)
+
+        containers = self._id_to_elements.get(id)
+        if not containers:
+            return None
+
+        def localname(tag):
+            """Return local name without namespace prefix (handles Clark notation)."""
+            if tag[0] == "{":
+                return tag.split("}", 1)[1]
+            return tag
+
+        leaves = []
+
+        def _collect_terminal_nodes(node):
+            # Terminal node = no children
+            if len(node) == 0:
+                if localname(node.tag) == leaf_tag:
+                    leaves.append(node)
+                return
+
+            # Recurse into children
+            for child in node:
+                _collect_terminal_nodes(child)
+
+        for container in containers:
+            _collect_terminal_nodes(container)
+
+        if not leaves:
+            return None
+
+        # Filter empty/whitespace-only leaves
+        if skip_empty:
+            filtered = []
+            for leaf in leaves:
+                text = (leaf.text or "")
+                if spacing:
+                    text = text.strip()
+                if text:
+                    filtered.append(leaf)
+            leaves = filtered
+
+        return leaves if leaves else None
 
     def getLeavesById(self, id: str, tag: str, leaf_tag: str,
                       skip_empty: bool = True,
@@ -685,6 +828,9 @@ class Canvas:
             setting text, clear text on all but the first element.
         :rtype: list[Element]
         '''
+        if not _LXML_AVAILABLE:
+            return self._getLeavesById_xml(id, leaf_tag,
+                                           skip_empty=skip_empty, spacing=spacing)
         query_str = (".//svg:{}[@id='{}']/svg:{}"
                      .format(tag, id, leaf_tag)
         )
@@ -736,7 +882,7 @@ class Canvas:
         return None
 
     def setField(self, id: str, value, skip_empty: bool=False,
-                 spacing: bool=False) -> bool:
+                 spacing: bool=False, ignore_tags: List[str]=[]) -> bool:
         ''' Set an Inkscape text field's content.
         Assuming typical SVG `<ANY id="ID"><tspan>VALUE` where ANY is
         usually `g` or `text` (or both nested), set the tspan's content.
@@ -759,13 +905,41 @@ class Canvas:
             (allows user to create a form where only spacing characters
             are in the empty form field). If not skip_empty, this has no
             effect. Defaults to True.
+        :param ignore_tags: If the tag is one of these, do not set it
+            and do not return error. Example: set this to "path"
+            if there is a named path but it doesn't need to be cleared.
         :return: Whether any matching field was found and set.
         '''
+        if ignore_tags:
+            for ignore_tag in ignore_tags:
+                # Does not need to be changed nor error if not,
+                #   (unless desired id isn't an ignorable tag).
+                # leaves = self.getLeavesById(id, ignore_tag,
+                #                             ignore_tag,
+                #                             skip_empty=skip_empty,
+                #                             spacing=spacing)
+                # if leaves:
+                #     return True
+                leaf = self.getElementById(id)
+                if ((leaf is not None)
+                        and ((leaf.tag == ignore_tag)
+                             or (leaf.tag == "{%s}%s" % (SVG_NS, ignore_tag)))):
+                    return True
+                # if id == "category_symbol_2_weapon_1_":
+                #     raise NotImplementedError(
+                #         'no id="{}" found or {} != {}'
+                #         .format(id, leaf.tag, ignore_tag))
+
         leaves = self.getLeavesById(id, "text", "tspan", skip_empty=skip_empty,
                                     spacing=spacing)
+        # if id == "class_":
+        #     raise NotImplementedError('id="{}" leaves = {}'
+        #                               .format(id, els_repr_raw(leaves)))
         new_value = str(value)  # Must be str, or can't be serialized! (or
         #   lxml has "TypeError: Argument must be bytes or unicode, got 'int'"
         #   and xml has "TypeError: cannot serialize 17 (type int)")
+        if leaves is None:
+            logger.error('No leaves for id="{}"'.format(id))
         if len(leaves) > 0:
             for leaf in leaves:
                 leaf.text = new_value

@@ -54,7 +54,7 @@ def clean_el_repr(el, exclude="{"+SVG_NS+"}"):
             .format(emit_cast(el)))
         return repr(el)
     tag = el.tag
-    if tag:
+    if tag and (exclude is not None):
         tag = clean_tag_str(tag, exclude=exclude)
     text = el.text
     if text is None:
