@@ -1,7 +1,7 @@
-Recipes for Common Usecases
-===========================
+Recipes for Common Use Cases
+============================
 
-These are common usecases of pyInkscape.
+These are common use cases of pyInkscape.
 
 Load an existing Inkscape file
 ------------------------------

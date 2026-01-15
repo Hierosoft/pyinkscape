@@ -21,4 +21,3 @@ python setup.py install
 cd ${TEST_DIR}
 python demo_helloworld.py
 python demo_piechart.py
-
